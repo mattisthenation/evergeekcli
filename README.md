@@ -9,8 +9,30 @@ skill, and emits **JSON by default** for programmatic consumption.
 - Package: `evergeekcli` · binary: `evergeek`
 - License: MIT
 
-> **Status:** under construction. Phase 0 (scaffold, domain model, client trait
-> + errors) has landed; commands, OAuth, and the Thrift client are in progress.
+> **Status:** under construction. The full CLI surface, command logic, output
+> rendering, ENML→text/markdown conversion, secure credential storage, and the
+> OAuth 1.0a flow are implemented and unit-tested (97 tests). What's left is the
+> **Evernote Thrift/EDAM client** that talks to the live API — so the data
+> commands parse args and run their logic against tests, but cannot yet reach a
+> real account until that client is wired (and an Evernote API key is approved).
+> See `docs/superpowers/plans/2026-05-21-evergeekcli.md` for the remaining tasks.
+
+## Commands
+
+```text
+evergeek auth login | status | logout      # OAuth; status never prints the token
+evergeek search <query> [--notebook N] [--since 1d|YYYY-MM-DD] [--limit N]
+evergeek recent [--since 1d] [--limit N]    # rolling recently-updated window
+evergeek yesterday [--notebook N] [--limit N] [--full]   # notes with activity yesterday
+evergeek note get <guid>
+evergeek notebooks
+# global: --format json|text|markdown (default json), --sandbox, --verbose
+```
+
+`<query>` accepts Evernote's native search grammar. `yesterday` returns the union
+of notes **created** and **edited** yesterday, each tagged with `created_yesterday`
+/ `edited_yesterday`; `--full` inlines the converted note bodies for a one-shot
+daily digest.
 
 ## API credentials (required)
 
