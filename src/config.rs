@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use crate::error::Result;
+use crate::error::{EvergeekError, Result};
+
+const CREDENTIALS_FILE: &str = "credentials.toml";
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Credentials {
@@ -14,44 +16,220 @@ pub struct Credentials {
 }
 
 /// Resolve the config directory. Honors `EVERGEEK_CONFIG_DIR`, else uses
-/// platform-appropriate `directories`.
-///
-/// Implemented in Task 5.
+/// platform-appropriate `directories`. Creates the directory if missing.
 pub fn config_dir() -> Result<PathBuf> {
-    todo!("config_dir is implemented in Task 5")
+    let dir = match std::env::var_os("EVERGEEK_CONFIG_DIR") {
+        Some(path) => PathBuf::from(path),
+        None => directories::ProjectDirs::from("io", "evergeek", "evergeek")
+            .map(|dirs| dirs.config_dir().to_path_buf())
+            .ok_or_else(|| {
+                EvergeekError::Config("could not determine a config directory".to_string())
+            })?,
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        EvergeekError::Config(format!(
+            "failed to create config directory {}: {e}",
+            dir.display()
+        ))
+    })?;
+    Ok(dir)
+}
+
+/// Path to the credentials file inside the config directory.
+fn credentials_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join(CREDENTIALS_FILE))
 }
 
 /// Load persisted credentials, if any (`Ok(None)` when the file is absent).
-///
-/// Implemented in Task 5.
 pub fn load_credentials() -> Result<Option<Credentials>> {
-    todo!("load_credentials is implemented in Task 5")
+    let path = credentials_path()?;
+    let contents = match std::fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(EvergeekError::Config(format!(
+                "failed to read credentials file {}: {e}",
+                path.display()
+            )))
+        }
+    };
+    let creds = toml::from_str(&contents).map_err(|e| {
+        EvergeekError::Config(format!(
+            "failed to parse credentials file {}: {e}",
+            path.display()
+        ))
+    })?;
+    Ok(Some(creds))
 }
 
 /// Persist credentials to `credentials.toml` (chmod `0600` on unix).
-///
-/// Implemented in Task 5.
-pub fn save_credentials(_creds: &Credentials) -> Result<()> {
-    todo!("save_credentials is implemented in Task 5")
+pub fn save_credentials(creds: &Credentials) -> Result<()> {
+    let path = credentials_path()?;
+    let contents = toml::to_string_pretty(creds)
+        .map_err(|e| EvergeekError::Config(format!("failed to serialize credentials: {e}")))?;
+    std::fs::write(&path, contents).map_err(|e| {
+        EvergeekError::Config(format!(
+            "failed to write credentials file {}: {e}",
+            path.display()
+        ))
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(&path, perms).map_err(|e| {
+            EvergeekError::Config(format!(
+                "failed to set permissions on credentials file {}: {e}",
+                path.display()
+            ))
+        })?;
+    }
+
+    Ok(())
 }
 
-/// Remove the stored credentials file.
-///
-/// Implemented in Task 5.
+/// Remove the stored credentials file. Succeeds even if it is already gone.
 pub fn delete_credentials() -> Result<()> {
-    todo!("delete_credentials is implemented in Task 5")
+    let path = credentials_path()?;
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(EvergeekError::Config(format!(
+            "failed to delete credentials file {}: {e}",
+            path.display()
+        ))),
+    }
 }
 
 /// Read `EVERGEEK_CONSUMER_KEY` from the environment.
-///
-/// Implemented in Task 5.
 pub fn consumer_key() -> Result<String> {
-    todo!("consumer_key is implemented in Task 5")
+    std::env::var("EVERGEEK_CONSUMER_KEY")
+        .map_err(|_| EvergeekError::Config("EVERGEEK_CONSUMER_KEY is not set".to_string()))
 }
 
 /// Read `EVERGEEK_CONSUMER_SECRET` from the environment.
-///
-/// Implemented in Task 5.
 pub fn consumer_secret() -> Result<String> {
-    todo!("consumer_secret is implemented in Task 5")
+    std::env::var("EVERGEEK_CONSUMER_SECRET")
+        .map_err(|_| EvergeekError::Config("EVERGEEK_CONSUMER_SECRET is not set".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Env vars are process-global and tests run in parallel threads, so any
+    /// test that mutates `EVERGEEK_*` env vars must hold this lock first.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn sample_credentials() -> Credentials {
+        Credentials {
+            auth_token: "S=s1:U=abc:E=18a:C=...:P=...:A=evergeek:V=2:H=deadbeef".to_string(),
+            note_store_url: "https://sandbox.evernote.com/shard/s1/notestore".to_string(),
+            web_api_url_prefix: "https://sandbox.evernote.com/shard/s1/".to_string(),
+            user_id: 12345,
+            shard: "s1".to_string(),
+            expires: 1_700_000_000_000,
+            sandbox: true,
+        }
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("EVERGEEK_CONFIG_DIR", tmp.path());
+
+        let creds = sample_credentials();
+        save_credentials(&creds).unwrap();
+
+        let loaded = load_credentials().unwrap();
+        assert_eq!(loaded, Some(creds));
+
+        std::env::remove_var("EVERGEEK_CONFIG_DIR");
+    }
+
+    #[test]
+    fn missing_file_loads_as_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("EVERGEEK_CONFIG_DIR", tmp.path());
+
+        let loaded = load_credentials().unwrap();
+        assert_eq!(loaded, None);
+
+        std::env::remove_var("EVERGEEK_CONFIG_DIR");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saved_file_mode_is_0600_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _guard = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("EVERGEEK_CONFIG_DIR", tmp.path());
+
+        save_credentials(&sample_credentials()).unwrap();
+        let path = tmp.path().join("credentials.toml");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+
+        std::env::remove_var("EVERGEEK_CONFIG_DIR");
+    }
+
+    #[test]
+    fn delete_removes_file_and_load_returns_none() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("EVERGEEK_CONFIG_DIR", tmp.path());
+
+        save_credentials(&sample_credentials()).unwrap();
+        let path = tmp.path().join("credentials.toml");
+        assert!(path.exists());
+
+        delete_credentials().unwrap();
+        assert!(!path.exists());
+        assert_eq!(load_credentials().unwrap(), None);
+
+        // Deleting again is a no-op (file already gone).
+        delete_credentials().unwrap();
+
+        std::env::remove_var("EVERGEEK_CONFIG_DIR");
+    }
+
+    #[test]
+    fn config_dir_honors_env_var_and_creates_it() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let nested = tmp.path().join("nested").join("evergeek");
+        std::env::set_var("EVERGEEK_CONFIG_DIR", &nested);
+
+        let dir = config_dir().unwrap();
+        assert_eq!(dir, nested);
+        assert!(dir.is_dir());
+
+        std::env::remove_var("EVERGEEK_CONFIG_DIR");
+    }
+
+    #[test]
+    fn consumer_key_and_secret_env_handling() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        // Missing → Config error.
+        std::env::remove_var("EVERGEEK_CONSUMER_KEY");
+        std::env::remove_var("EVERGEEK_CONSUMER_SECRET");
+        assert!(matches!(consumer_key(), Err(EvergeekError::Config(_))));
+        assert!(matches!(consumer_secret(), Err(EvergeekError::Config(_))));
+
+        // Present → value returned.
+        std::env::set_var("EVERGEEK_CONSUMER_KEY", "my-key");
+        std::env::set_var("EVERGEEK_CONSUMER_SECRET", "my-secret");
+        assert_eq!(consumer_key().unwrap(), "my-key");
+        assert_eq!(consumer_secret().unwrap(), "my-secret");
+
+        std::env::remove_var("EVERGEEK_CONSUMER_KEY");
+        std::env::remove_var("EVERGEEK_CONSUMER_SECRET");
+    }
 }
