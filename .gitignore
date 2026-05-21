@@ -1,0 +1,12 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# Secrets — never commit (defense in depth; these normally live in $HOME, not the repo)
+credentials.toml
+*.env
+.env
+
+# OS / editor
+.DS_Store
