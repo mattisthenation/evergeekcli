@@ -204,6 +204,36 @@ Public: `pub struct MockClient { pub notes: Vec<NoteContent>, pub notebooks: Vec
 
 ## Phase 2 — Commands
 
+### FROZEN COMMAND CONTRACT (T7 defines; T8/T9/T11 implement bodies)
+
+Each command function returns the already-rendered output `String`; `main` prints it to stdout, errors to stderr. Data commands are generic over the client via `&dyn EvernoteClient` so tests pass a `MockClient`. T7 creates these as compiling stubs (`todo!()` bodies) with EXACTLY these signatures; later tasks fill the bodies.
+
+```rust
+use crate::evernote::EvernoteClient;
+use crate::output::Format;
+use crate::error::Result;
+
+// commands/search.rs  (T8)
+pub fn search(client: &dyn EvernoteClient, words: &str, notebook: Option<&str>,
+              since: Option<&str>, limit: i32, fmt: Format) -> Result<String>;
+pub fn recent(client: &dyn EvernoteClient, since: &str, limit: i32, fmt: Format) -> Result<String>;
+pub fn yesterday(client: &dyn EvernoteClient, notebook: Option<&str>, limit: i32,
+                 full: bool, fmt: Format) -> Result<String>;
+
+// commands/note.rs  (T9)
+pub fn get(client: &dyn EvernoteClient, guid: &str, fmt: Format) -> Result<String>;
+
+// commands/notebooks.rs  (T9)
+pub fn list(client: &dyn EvernoteClient, fmt: Format) -> Result<String>;
+
+// commands/auth.rs  (T11)  — no client; uses auth::oauth + config
+pub fn login(sandbox: bool) -> Result<String>;
+pub fn status() -> Result<String>;
+pub fn logout() -> Result<String>;
+```
+
+`main` builds the data-command client via a helper `fn build_client(sandbox: bool) -> Result<Box<dyn EvernoteClient>>` that loads `Credentials` and constructs a `ThriftClient` (stub until Phase 4 — `--notebook`/`--since` parsing and command logic are still fully unit-testable via `MockClient` against the functions above).
+
 ### Task 7: CLI skeleton
 **Files:** `src/cli.rs`. Public: a clap derive `Cli` with global `--format` (default Json), `--sandbox`, `--verbose`, and a `Commands` enum: `Auth{..}`, `Search{..}`, `Recent{..}`, `Yesterday{..}`, `Note{..}`, `Notebooks`. `main.rs` builds a client and dispatches into `commands::`.
 - [ ] Define args per the spec command table. `--since` accepts `1d`/`Nd` or `YYYY-MM-DD`. Build. A test parsing representative argv via `Cli::try_parse_from`. Commit.
