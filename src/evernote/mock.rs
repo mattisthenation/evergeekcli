@@ -18,7 +18,8 @@ pub struct MockClient {
 impl EvernoteClient for MockClient {
     /// Returns the summary of every note whose title or plain-text body
     /// contains `query.words` (case-insensitive substring). An empty `words`
-    /// matches every note. When `query.limit > 0`, the result is truncated to
+    /// matches every note. When `query.notebook_guid` is set, only notes in that
+    /// notebook are returned. When `query.limit > 0`, the result is truncated to
     /// at most that many summaries. Results preserve `notes` order.
     fn search_notes(&self, query: &NoteQuery) -> Result<Vec<NoteSummary>> {
         let needle = query.words.to_lowercase();
@@ -26,9 +27,14 @@ impl EvernoteClient for MockClient {
             .notes
             .iter()
             .filter(|note| {
-                needle.is_empty()
+                let words_match = needle.is_empty()
                     || note.summary.title.to_lowercase().contains(&needle)
-                    || note.text.to_lowercase().contains(&needle)
+                    || note.text.to_lowercase().contains(&needle);
+                let notebook_match = query
+                    .notebook_guid
+                    .as_deref()
+                    .is_none_or(|wanted| note.summary.notebook_guid.as_deref() == Some(wanted));
+                words_match && notebook_match
             })
             .map(|note| note.summary.clone())
             .collect();
@@ -271,6 +277,22 @@ mod tests {
             .map(|n| n.summary.title.as_str())
             .collect();
         assert_eq!(titles(&results), expected);
+    }
+
+    #[test]
+    fn search_filters_by_notebook_guid() {
+        let client = sample();
+        let q = NoteQuery {
+            words: String::new(),
+            notebook_guid: Some("nb-work".to_string()),
+            limit: 0,
+        };
+        let results = client.search_notes(&q).expect("search");
+        // Only the two notes in the Work notebook (note-001, note-003).
+        assert_eq!(results.len(), 2);
+        assert!(results
+            .iter()
+            .all(|s| s.notebook_guid.as_deref() == Some("nb-work")));
     }
 
     #[test]

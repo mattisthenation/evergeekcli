@@ -4,7 +4,7 @@ use crate::error::{EvergeekError, Result};
 
 const CREDENTIALS_FILE: &str = "credentials.toml";
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Credentials {
     pub auth_token: String, // SECRET
     pub note_store_url: String,
@@ -13,6 +13,22 @@ pub struct Credentials {
     pub shard: String,
     pub expires: i64, // ms since epoch
     pub sandbox: bool,
+}
+
+// Manual Debug that redacts the auth token — this is a public repo and the
+// token grants full account access, so it must never reach logs/panics.
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("auth_token", &"[REDACTED]")
+            .field("note_store_url", &self.note_store_url)
+            .field("web_api_url_prefix", &self.web_api_url_prefix)
+            .field("user_id", &self.user_id)
+            .field("shard", &self.shard)
+            .field("expires", &self.expires)
+            .field("sandbox", &self.sandbox)
+            .finish()
+    }
 }
 
 /// Resolve the config directory. Honors `EVERGEEK_CONFIG_DIR`, else uses
@@ -62,28 +78,43 @@ pub fn load_credentials() -> Result<Option<Credentials>> {
     Ok(Some(creds))
 }
 
-/// Persist credentials to `credentials.toml` (chmod `0600` on unix).
+/// Persist credentials to `credentials.toml`. On unix the file is created with
+/// mode `0600` from the start and swapped in atomically via a temp file +
+/// rename, so the token is never momentarily readable by other users.
 pub fn save_credentials(creds: &Credentials) -> Result<()> {
     let path = credentials_path()?;
     let contents = toml::to_string_pretty(creds)
         .map_err(|e| EvergeekError::Config(format!("failed to serialize credentials: {e}")))?;
-    std::fs::write(&path, contents).map_err(|e| {
+    let write_err = |e: std::io::Error| {
         EvergeekError::Config(format!(
             "failed to write credentials file {}: {e}",
             path.display()
         ))
-    })?;
+    };
 
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::Permissions::from_mode(0o600);
-        std::fs::set_permissions(&path, perms).map_err(|e| {
-            EvergeekError::Config(format!(
-                "failed to set permissions on credentials file {}: {e}",
-                path.display()
-            ))
-        })?;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        // Write to a sibling temp file created 0600, then atomically rename over
+        // the target. The renamed inode keeps its 0600 mode regardless of
+        // whether the target previously existed with looser permissions.
+        let tmp_path = path.with_extension("toml.tmp");
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .map_err(write_err)?;
+        file.write_all(contents.as_bytes()).map_err(write_err)?;
+        file.sync_all().map_err(write_err)?;
+        std::fs::rename(&tmp_path, &path).map_err(write_err)?;
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(&path, contents).map_err(write_err)?;
     }
 
     Ok(())
@@ -211,6 +242,19 @@ mod tests {
         assert!(dir.is_dir());
 
         std::env::remove_var("EVERGEEK_CONFIG_DIR");
+    }
+
+    #[test]
+    fn debug_redacts_auth_token() {
+        let creds = sample_credentials();
+        let rendered = format!("{creds:?}");
+        assert!(
+            !rendered.contains(&creds.auth_token),
+            "Debug output leaked the auth token: {rendered}"
+        );
+        assert!(rendered.contains("[REDACTED]"));
+        // Non-secret fields should still be visible for debugging.
+        assert!(rendered.contains("s1"));
     }
 
     #[test]
