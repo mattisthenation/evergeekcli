@@ -155,22 +155,22 @@ pub enum Format { Json, Text, Markdown }
 ### Task 0: Scaffold
 **Files:** Create `Cargo.toml`, `src/main.rs`, `src/lib.rs`, `README.md`, `LICENSE` (MIT), `.github/workflows/ci.yml`, `rust-toolchain.toml`.
 
-- [ ] Init crate: package `evergeekcli`, `[[bin]] name = "evergeek" path = "src/main.rs"`, plus a lib (`src/lib.rs`).
-- [ ] `Cargo.toml` declares ALL deps from the Tech Stack up front (so no later task edits it): clap (derive), reqwest (blocking, rustls-tls, no default-features bloat), thrift, serde, serde_json, toml, directories, anyhow, thiserror, html2text, webbrowser, url, time (or chrono). Add `[dev-dependencies]`: `httpmock` (or `wiremock`), `tempfile`.
-- [ ] `src/lib.rs` declares every module up front, each pointing at a stub that compiles: `pub mod model; pub mod error; pub mod config; pub mod output; pub mod enml; pub mod cli; pub mod auth; pub mod evernote; pub mod commands;`
-- [ ] Create compiling stub files for every module/submodule listed in the spec layout (empty or `todo!()` bodies behind real signatures from FROZEN INTERFACES where known). Goal: `cargo build` succeeds.
-- [ ] `main.rs`: parse args via `cli`, dispatch, print, map errors to stderr + non-zero exit (stdout stays clean for JSON).
-- [ ] CI runs `cargo build`, `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check` on stable.
-- [ ] README stub: what it is, the `EVERGEEK_CONSUMER_KEY`/`_SECRET` env requirement, "never commit secrets" note, build/run.
-- [ ] Verify: `cargo build && cargo clippy -- -D warnings && cargo fmt --check` all pass. Commit.
+- [x] Init crate: package `evergeekcli`, `[[bin]] name = "evergeek" path = "src/main.rs"`, plus a lib (`src/lib.rs`).
+- [x] `Cargo.toml` declares ALL deps from the Tech Stack up front (so no later task edits it): clap (derive), reqwest (blocking, rustls-tls, no default-features bloat), thrift, serde, serde_json, toml, directories, anyhow, thiserror, html2text, webbrowser, url, time (or chrono). Add `[dev-dependencies]`: `httpmock` (or `wiremock`), `tempfile`.
+- [x] `src/lib.rs` declares every module up front, each pointing at a stub that compiles: `pub mod model; pub mod error; pub mod config; pub mod output; pub mod enml; pub mod cli; pub mod auth; pub mod evernote; pub mod commands;`
+- [x] Create compiling stub files for every module/submodule listed in the spec layout (empty or `todo!()` bodies behind real signatures from FROZEN INTERFACES where known). Goal: `cargo build` succeeds.
+- [x] `main.rs`: parse args via `cli`, dispatch, print, map errors to stderr + non-zero exit (stdout stays clean for JSON).
+- [x] CI runs `cargo build`, `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check` on stable.
+- [x] README stub: what it is, the `EVERGEEK_CONSUMER_KEY`/`_SECRET` env requirement, "never commit secrets" note, build/run.
+- [x] Verify: `cargo build && cargo clippy -- -D warnings && cargo fmt --check` all pass. Commit.
 
 ### Task 1: Domain model
 **Files:** `src/model.rs` (replace stub with FROZEN INTERFACE above). Test: `cargo test model`.
-- [ ] Paste the frozen `model.rs`. Add a unit test asserting `NoteSummary` round-trips through `serde_json` and that `created_yesterday: None` is omitted from JSON. Commit.
+- [x] Paste the frozen `model.rs`. Add a unit test asserting `NoteSummary` round-trips through `serde_json` and that `created_yesterday: None` is omitted from JSON. Commit.
 
 ### Task 2: Client trait + errors
 **Files:** `src/error.rs`, `src/evernote/mod.rs` (frozen interfaces above).
-- [ ] Paste frozen `error.rs` and `evernote/mod.rs`. Build. Commit. (No behavior to test yet; the mock in T6 exercises the trait.)
+- [x] Paste frozen `error.rs` and `evernote/mod.rs`. Build. Commit. (No behavior to test yet; the mock in T6 exercises the trait.)
 
 ---
 
