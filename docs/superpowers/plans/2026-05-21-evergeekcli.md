@@ -236,7 +236,7 @@ pub fn logout() -> Result<String>;
 
 ### Task 7: CLI skeleton
 **Files:** `src/cli.rs`. Public: a clap derive `Cli` with global `--format` (default Json), `--sandbox`, `--verbose`, and a `Commands` enum: `Auth{..}`, `Search{..}`, `Recent{..}`, `Yesterday{..}`, `Note{..}`, `Notebooks`. `main.rs` builds a client and dispatches into `commands::`.
-- [ ] Define args per the spec command table. `--since` accepts `1d`/`Nd` or `YYYY-MM-DD`. Build. A test parsing representative argv via `Cli::try_parse_from`. Commit.
+- [x] Define args per the spec command table. `--since` accepts `1d`/`Nd` or `YYYY-MM-DD`. Build. A test parsing representative argv via `Cli::try_parse_from`. Commit.
 
 ### Task 8: search / recent / yesterday
 **Files:** `src/commands/search.rs` (+ a `query` helper). Test: `cargo test commands` with `MockClient`.
@@ -244,13 +244,13 @@ Query building rules:
 - `search <words>`: `NoteQuery.words = words`; `--notebook` resolves name→guid via `list_notebooks`; `--since 1d`→prepend `updated:day-1`, `--since YYYY-MM-DD`→`updated:YYYYMMDD`; `--limit` default 50.
 - `recent`: `--since 1d` default → `words = "updated:day-N"`.
 - `yesterday`: run TWO `search_notes` calls — `created:day-1 -created:day` and `updated:day-1 -updated:day` — merge by `guid`, set `created_yesterday`/`edited_yesterday` flags accordingly, sort by `updated` desc, apply `--limit`. `--full` then calls `get_note` per result and renders `NoteContent`s.
-- [ ] TDD the query-string builder as a pure function (`fn build_search_words(...) -> String`) with table tests for each flag combination.
-- [ ] TDD `yesterday` merge/dedup/flagging logic against a `MockClient` returning overlapping sets (pure merge fn `fn merge_yesterday(created: Vec<NoteSummary>, updated: Vec<NoteSummary>) -> Vec<NoteSummary>`). Commit per cycle.
+- [x] TDD the query-string builder as a pure function (`fn build_search_words(...) -> String`) with table tests for each flag combination.
+- [x] TDD `yesterday` merge/dedup/flagging logic against a `MockClient` returning overlapping sets (pure merge fn `fn merge_yesterday(created: Vec<NoteSummary>, updated: Vec<NoteSummary>) -> Vec<NoteSummary>`). Commit per cycle.
 
 ### Task 9: note get / notebooks
 **Files:** `src/commands/note.rs`, `src/commands/notebooks.rs`.
-- [ ] `note get <guid>`: call `get_note`, render per `--format`. TDD against `MockClient` (incl. `NotFound`).
-- [ ] `notebooks`: call `list_notebooks`, render. TDD. Commit per cycle.
+- [x] `note get <guid>`: call `get_note`, render per `--format`. TDD against `MockClient` (incl. `NotFound`).
+- [x] `notebooks`: call `list_notebooks`, render. TDD. Commit per cycle.
 
 ---
 
@@ -266,11 +266,11 @@ Public: `pub fn login(sandbox: bool) -> Result<Credentials>` orchestrates the fl
 - `fn access_token_url(base, key, secret, temp_token, verifier, ts, nonce) -> String`.
 - `fn credentials_from_access_response(map, sandbox) -> Result<Credentials>` (reads `oauth_token`, `edam_*`).
 - `login()` then: bind `127.0.0.1:0`, GET temp url, open browser to `{base}/OAuth.action?oauth_token=...` via `webbrowser`, accept one HTTP request on the listener, extract `oauth_verifier`, GET access url, build `Credentials`.
-- [ ] TDD the four pure helpers with known inputs/outputs. TDD the temp/access GETs against `httpmock`. Commit per cycle.
+- [x] TDD the four pure helpers with known inputs/outputs. TDD the temp/access GETs against `httpmock`. Commit per cycle.
 
 ### Task 11: auth commands
 **Files:** `src/commands/auth.rs`.
-- [ ] `login` → `oauth::login` → `config::save_credentials`. `status` → load creds, print user_id/expiry(human)/note-store host/sandbox, **never the token**; if none → `NotAuthenticated`. `logout` → `delete_credentials`. TDD `status` rendering + redaction with a fixture `Credentials`. Commit per cycle.
+- [x] `login` → `oauth::login` → `config::save_credentials`. `status` → load creds, print user_id/expiry(human)/note-store host/sandbox, **never the token**; if none → `NotAuthenticated`. `logout` → `delete_credentials`. TDD `status` rendering + redaction with a fixture `Credentials`. Commit per cycle.
 
 ---
 
