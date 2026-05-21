@@ -179,26 +179,26 @@ pub enum Format { Json, Text, Markdown }
 ### Task 3: ENML conversion
 **Files:** `src/enml.rs`, `fixtures/*.enml`. Test: `cargo test enml`.
 Public API: `pub fn enml_to_text(enml: &str) -> String` and `pub fn enml_to_markdown(enml: &str) -> String`.
-- [ ] Add 2-3 fixtures: a simple note, one with `<en-todo checked="true"/>`/`<en-todo/>`, one with `<en-media .../>`.
-- [ ] TDD: `enml_to_text` strips the `<en-note>` wrapper and tags, returns readable text (use `html2text`). `<en-todo>` → `[x]`/`[ ]`, `<en-media>` → `[attachment]` placeholder, `<en-crypt>` → `[encrypted]`.
-- [ ] TDD: `enml_to_markdown` produces markdown (headings/lists/links preserved).
-- [ ] Tests assert against fixture expectations. Commit per cycle.
+- [x] Add 2-3 fixtures: a simple note, one with `<en-todo checked="true"/>`/`<en-todo/>`, one with `<en-media .../>`.
+- [x] TDD: `enml_to_text` strips the `<en-note>` wrapper and tags, returns readable text (use `html2text`). `<en-todo>` → `[x]`/`[ ]`, `<en-media>` → `[attachment]` placeholder, `<en-crypt>` → `[encrypted]`.
+- [x] TDD: `enml_to_markdown` produces markdown (headings/lists/links preserved).
+- [x] Tests assert against fixture expectations. Commit per cycle. ✅ DONE (commit 60de4c2, 7 tests)
 
 ### Task 4: Output rendering
 **Files:** `src/output.rs`. Test: `cargo test output`.
-- [ ] Implement `Format` enum + `render_summaries`/`render_note`/`render_notebooks`.
-- [ ] JSON: `serde_json::to_string_pretty`. Text/Markdown: human tables/sections; note get in text = title + metadata + `text`; in markdown = `# title` + metadata + `markdown`.
-- [ ] TDD each renderer against a fixed `NoteSummary`/`NoteContent`. Assert JSON omits `created_yesterday` when None. Commit per cycle.
+- [x] Implement `Format` enum + `render_summaries`/`render_note`/`render_notebooks`.
+- [x] JSON: `serde_json::to_string_pretty`. Text/Markdown: human tables/sections; note get in text = title + metadata + `text`; in markdown = `# title` + metadata + `markdown`.
+- [x] TDD each renderer against a fixed `NoteSummary`/`NoteContent`. Assert JSON omits `created_yesterday` when None. Commit per cycle. ✅ DONE (commit 4d0b618, 12 tests)
 
 ### Task 5: Config & secrets
 **Files:** `src/config.rs`. Test: `cargo test config` (use `tempfile` + `EVERGEEK_CONFIG_DIR`).
 Public API: `Credentials` (frozen), `pub fn config_dir() -> Result<PathBuf>` (honors `EVERGEEK_CONFIG_DIR`, else `directories`), `pub fn load_credentials() -> Result<Option<Credentials>>`, `pub fn save_credentials(&Credentials) -> Result<()>` (writes `credentials.toml`, chmod `0600` on unix), `pub fn delete_credentials() -> Result<()>`, and consumer-key/secret readers from env: `pub fn consumer_key() -> Result<String>`, `pub fn consumer_secret() -> Result<String>` (read `EVERGEEK_CONSUMER_KEY`/`_SECRET`, error `Config` if missing).
-- [ ] TDD: save then load round-trips. On unix, saved file mode is `0600`. delete removes it. Missing file → `Ok(None)`. Missing env var → `Config` error. Commit per cycle.
+- [x] TDD: save then load round-trips. On unix, saved file mode is `0600`. delete removes it. Missing file → `Ok(None)`. Missing env var → `Config` error. Commit per cycle. ✅ DONE (commit 397a63d + review fix eb815c8). Review hardening: write is atomic temp+rename at 0600; `Credentials` has a manual `Debug` that redacts `auth_token`.
 
 ### Task 6: Mock client
 **Files:** `src/evernote/mock.rs`. Test: `cargo test mock`.
 Public: `pub struct MockClient { pub notes: Vec<NoteContent>, pub notebooks: Vec<Notebook> }` impl `EvernoteClient`. `search_notes` filters `notes` whose `summary.title`/text contains `query.words` (simple substring; honors `limit`), returns their summaries. `get_note` finds by guid (else `NotFound`). `list_notebooks` returns `notebooks`. Add `pub fn sample() -> MockClient` with deterministic fixture data for downstream tests.
-- [ ] TDD each method. Commit per cycle.
+- [x] TDD each method. Commit per cycle. ✅ DONE (commit fa987b4 + review fix eb815c8). Note: `search_notes` also filters by `query.notebook_guid`; `sample()` notebook guids are `nb-work` / `nb-personal`.
 
 ---
 
@@ -228,6 +228,8 @@ Query building rules:
 
 ### Task 10: OAuth 1.0a flow
 **Files:** `src/auth/oauth.rs`. Test: `cargo test oauth` (no live network — test pure builders/parsers; mock HTTP with `httpmock`).
+
+> ⚠️ **Deferred review note (from Phase 1 review):** `config::tests` has a private `ENV_LOCK` mutex that only serializes env-var mutation *within that module*. If any oauth/command test also mutates `EVERGEEK_*` env vars, the whole test binary runs threads in parallel and they will race. Before adding env-mutating tests here, either add the `serial_test` crate (mark such tests `#[serial]`) or hoist a shared lock both modules use. Prefer pure helpers that take key/secret as args (as factored below) so most tests need no env at all.
 Public: `pub fn login(sandbox: bool) -> Result<Credentials>` orchestrates the flow; but factor pure, testable helpers:
 - `fn temp_token_url(base, key, secret, callback, ts, nonce) -> String` (PLAINTEXT: `oauth_signature={secret}%26`).
 - `fn parse_oauth_response(body: &str) -> HashMap<String,String>` (urlencoded `k=v&...`).
