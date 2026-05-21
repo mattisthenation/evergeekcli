@@ -203,11 +203,16 @@ fn credentials_from_access_response(
 /// needs to be unique per timestamp; a monotonic-ish value derived from the
 /// clock is sufficient for PLAINTEXT.
 fn timestamp_and_nonce() -> (i64, String) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // A process-wide counter guarantees distinct nonces even for two calls that
+    // land in the same nanosecond (e.g. temp + access requests on a fast CPU).
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     let ts = now.as_secs() as i64;
-    let nonce = format!("{}{}", now.as_secs(), now.subsec_nanos());
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let nonce = format!("{}{}{}", now.as_secs(), now.subsec_nanos(), seq);
     (ts, nonce)
 }
 
@@ -237,12 +242,36 @@ fn wait_for_verifier(listener: &TcpListener) -> Result<String> {
         .accept()
         .map_err(|e| EvergeekError::Network(format!("failed to accept OAuth callback: {e}")))?;
 
-    // Read enough of the request to capture the request line (method + path).
-    let mut buf = [0u8; 4096];
-    let n = stream
-        .read(&mut buf)
-        .map_err(|e| EvergeekError::Network(format!("failed to read OAuth callback: {e}")))?;
-    let request = String::from_utf8_lossy(&buf[..n]);
+    // Bound the read: a connection that never sends a complete request (stalled
+    // browser, local port scanner) must not hang the CLI forever.
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(120)))
+        .map_err(|e| EvergeekError::Network(format!("failed to set callback read timeout: {e}")))?;
+
+    // Accumulate across (possibly fragmented) reads until the end of the HTTP
+    // headers, with a hard cap on untrusted local input. The request line —
+    // which carries oauth_verifier — is the first line, so this always captures
+    // it once headers complete (or the peer closes).
+    let mut buf: Vec<u8> = Vec::with_capacity(8192);
+    let mut chunk = [0u8; 1024];
+    loop {
+        let n = stream
+            .read(&mut chunk)
+            .map_err(|e| EvergeekError::Network(format!("failed to read OAuth callback: {e}")))?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+            break;
+        }
+        if buf.len() > 16_384 {
+            return Err(EvergeekError::Api(
+                "OAuth callback request was too large".to_string(),
+            ));
+        }
+    }
+    let request = String::from_utf8_lossy(&buf);
 
     let verifier = extract_verifier(&request).ok_or_else(|| {
         EvergeekError::Api("OAuth callback did not include an oauth_verifier".to_string())
@@ -288,7 +317,10 @@ pub fn login(sandbox: bool) -> Result<Credentials> {
     let local_addr = listener
         .local_addr()
         .map_err(|e| EvergeekError::Network(format!("failed to read callback address: {e}")))?;
-    let callback = format!("http://{local_addr}/");
+    // Use the `localhost` hostname (not the 127.0.0.1 literal from SocketAddr):
+    // the spec specifies it and Evernote validates the callback against the
+    // registered callback domain. The listener still binds to 127.0.0.1.
+    let callback = format!("http://localhost:{}/", local_addr.port());
 
     // Step 1: temporary token.
     let (ts, nonce) = timestamp_and_nonce();

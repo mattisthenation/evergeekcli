@@ -117,12 +117,12 @@ fn build_search_words(words: &str, since: Option<&str>) -> Result<String> {
     }
 }
 
-/// Build the `words` string for `recent`: a `"<N>d"` relative-day spec maps to
-/// `updated:day-N`. Anything else is an [`EvergeekError::Config`].
+/// Build the `words` string for `recent`. Accepts either a `"<N>d"` relative-day
+/// spec (→ `updated:day-N`) or an absolute `"YYYY-MM-DD"` date (→
+/// `updated:YYYYMMDD`), matching the `--since` help text. Invalid input is an
+/// [`EvergeekError::Config`].
 fn build_recent_words(since: &str) -> Result<String> {
-    let n = parse_relative_days(since)
-        .ok_or_else(|| EvergeekError::Config(format!("invalid --since value: {since}")))?;
-    Ok(format!("updated:day-{n}"))
+    since_clause(since)
 }
 
 /// Render the `updated:` clause for a `since` value, accepting either a
@@ -312,8 +312,17 @@ mod tests {
     }
 
     #[test]
+    fn build_recent_words_accepts_absolute_date() {
+        // The --since help promises YYYY-MM-DD support for `recent` too.
+        assert_eq!(
+            build_recent_words("2024-01-15").unwrap(),
+            "updated:20240115"
+        );
+    }
+
+    #[test]
     fn build_recent_words_invalid_is_config_error() {
-        for bad in ["", "d", "7", "7days", "2024-01-15", "abc"] {
+        for bad in ["", "d", "7", "7days", "abc"] {
             let err = build_recent_words(bad).expect_err(bad);
             assert!(
                 matches!(err, EvergeekError::Config(_)),
