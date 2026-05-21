@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">
+<en-note>
+  <h1>Grocery List</h1>
+  <p>Things to buy this <b>week</b> from the <a href="https://example.com/store">corner store</a>.</p>
+  <ul>
+    <li>Apples</li>
+    <li>Bread</li>
+    <li>Coffee</li>
+  </ul>
+</en-note>
